@@ -90,3 +90,20 @@ export type BlogPostData = {
 export type ExpressiveCodeConfig = {
 	theme: string;
 };
+
+export type CommentConfig = {
+	enable: boolean;
+	type: "giscus" | "waline" | "twikoo";
+	repo: string;
+	repoId: string;
+	category: string;
+	categoryId: string;
+	mapping?: string;
+	strict?: string;
+	reactionsEnabled?: string;
+	emitMetadata?: string;
+	inputPosition?: string;
+	theme?: string;
+	lang?: string;
+	darkTheme?: string;
+};

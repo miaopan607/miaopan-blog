@@ -1,0 +1,30 @@
+---
+import { commentConfig } from "../config";
+
+const { class: className } = Astro.props;
+---
+
+{commentConfig.enable && (
+    <div class:list={["w-full onload-animation", className]}>
+        <div class="card-base p-6 mb-4">
+            <div class="giscus"></div>
+        </div>
+
+        <script is:inline
+                src="https://giscus.app/client.js"
+                data-repo={commentConfig.repo}
+                data-repo-id={commentConfig.repoId}
+                data-category={commentConfig.category}
+                data-category-id={commentConfig.categoryId}
+                data-mapping={commentConfig.mapping || "title"}
+                data-strict={commentConfig.strict || "0"}
+                data-reactions-enabled={commentConfig.reactionsEnabled || "1"}
+                data-emit-metadata={commentConfig.emitMetadata || "0"}
+                data-input-position={commentConfig.inputPosition || "top"}
+                data-theme={commentConfig.theme || "preferred_color_scheme"}
+                data-lang={commentConfig.lang || "zh-CN"}
+                crossorigin="anonymous"
+                async>
+        </script>
+    </div>
+)}

@@ -1,4 +1,5 @@
 import type {
+	CommentConfig,
 	ExpressiveCodeConfig,
 	LicenseConfig,
 	NavBarConfig,
@@ -80,3 +81,19 @@ export const expressiveCodeConfig: ExpressiveCodeConfig = {
 	// Please select a dark theme, as this blog theme currently only supports dark background color
 	theme: "github-dark",
 };
+
+export const commentConfig: CommentConfig = {
+  enable: true,
+  type: 'giscus',
+  repo: 'miaopan607/miaopan-blog',             // 对应 data-repo
+  repoId: 'R_kgDORDSgkw',                      // 对应 data-repo-id
+  category: 'Announcements',                   // 对应 data-category
+  categoryId: 'DIC_kwDORDSgk84C1irY',          // 对应 data-category-id
+  mapping: 'title',                         // 对应 data-mapping
+  strict: '0',                                 // 对应 data-strict
+  reactionsEnabled: '1',                       // 对应 data-reactions-enabled
+  emitMetadata: '0',                           // 对应 data-emit-metadata
+  inputPosition: 'top',                        // 对应 data-input-position
+  theme: 'preferred_color_scheme',             // 对应 data-theme
+  lang: 'zh-CN',                               // 对应 data-lang
+}
