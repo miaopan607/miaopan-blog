@@ -38,7 +38,7 @@ export enum LinkPreset {
 	Home = 0,
 	Archive = 1,
 	About = 2,
-	Friend = 3,
+	Music = 3,
 }
 
 export type NavBarLink = {
@@ -108,3 +108,7 @@ export type CommentConfig = {
 	lang?: string;
 	darkTheme?: string;
 };
+
+export type MusicConfig = {
+ 	id: string;
+ };

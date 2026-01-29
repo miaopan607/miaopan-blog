@@ -40,4 +40,28 @@ document.addEventListener("click", function (e: MouseEvent) {
         target.setAttribute("data-timeout-id", newTimeoutId.toString());
     }
 });
+
+// 新标签页打开外部链接
+function handleExternalLinks() {
+    const mdContainer = document.querySelector('.custom-md');
+    if (!mdContainer) return;
+    
+    const links = mdContainer.querySelectorAll('a');
+    links.forEach(link => {
+        const href = link.getAttribute('href');
+        if (href && (href.startsWith('http') || href.startsWith('//'))) {
+            link.setAttribute('target', '_blank');
+            link.setAttribute('rel', 'noopener noreferrer');
+        }
+    });
+}
+
+// 初始化
+handleExternalLinks();
+// 如果使用了 swup 等无刷新跳转插件，监听 swup 的内容替换事件
+document.addEventListener('swup:content:replace', handleExternalLinks);
+document.addEventListener('swup:enable', () => {
+    // @ts-ignore
+    window.swup.hooks.on('content:replace', handleExternalLinks);
+});
 </script>

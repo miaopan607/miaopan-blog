@@ -1,0 +1,30 @@
+---
+const { title = "查看歌词" } = Astro.props;
+---
+<details class="lyrics-container">
+  <summary>{title}</summary>
+  <div class="content">
+    <slot />
+  </div>
+</details>
+
+<style>
+  .lyrics-container {
+    border: 1px solid var(--card-border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: var(--card-bg);
+  }
+  summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: var(--primary);
+    list-style: none; /* 隐藏默认箭头 */
+  }
+  .content {
+    margin-top: 1rem;
+    white-space: pre-wrap; /* 保留歌词换行 */
+    font-size: 0.9rem;
+    opacity: 0.8;
+  }
+</style>

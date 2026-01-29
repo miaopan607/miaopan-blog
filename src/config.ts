@@ -5,6 +5,7 @@ import type {
 	NavBarConfig,
 	ProfileConfig,
 	SiteConfig,
+	MusicConfig,
 } from "./types/config";
 import { LinkPreset } from "./types/config";
 
@@ -43,7 +44,7 @@ export const navBarConfig: NavBarConfig = {
 	links: [
 		LinkPreset.Home,
 		LinkPreset.Archive,
-		// LinkPreset.Friend,
+		LinkPreset.Music,
 		LinkPreset.About,
 		{
 			name: "GitHub",
@@ -98,3 +99,7 @@ export const commentConfig: CommentConfig = {
   theme: 'preferred_color_scheme',             // 对应 data-theme
   lang: 'zh-CN',                               // 对应 data-lang
 }
+
+export const musicConfig: MusicConfig = {
+   id: "101126",
+ }
