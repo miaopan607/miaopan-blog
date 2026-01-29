@@ -2,25 +2,19 @@
 
 import { getEntry, render } from "astro:content";
 import Markdown from "@components/misc/Markdown.astro";
+import DynamicMusicContent from "@components/DynamicMusicContent.svelte";
 import I18nKey from "../i18n/i18nKey";
 import { i18n } from "../i18n/translation";
 import MainGridLayout from "../layouts/MainGridLayout.astro";
 import Comments from "../components/Comments.astro";
 import { commentConfig } from "../config";
 
-const musicPost = await getEntry("spec", "music");
-
-if (!musicPost) {
-	throw new Error("Music page content not found");
-}
-
-const { Content } = await render(musicPost);
 ---
 <MainGridLayout title={i18n(I18nKey.music)} description={i18n(I18nKey.music)}>
     <div class="flex w-full rounded-[var(--radius-large)] overflow-hidden relative min-h-32">
         <div class="card-base z-10 px-9 py-6 relative w-full ">
             <Markdown class="mt-2">
-                <Content />
+                <DynamicMusicContent client:only="svelte" />
             </Markdown>
         </div>
     </div>

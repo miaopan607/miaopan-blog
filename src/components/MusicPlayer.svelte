@@ -10,9 +10,22 @@
     let musicUrl = $state("");
     
     async function fetchMusicInfo() {
+        let currentMusicId = musicConfig.id;
+
+        try {
+            // 尝试从后端获取今日音乐 ID
+            const res = await fetch('https://api.xn--24wq0n.top/api/today-music');
+            const data = await res.json();
+            if (data.success && data.musicId) {
+                currentMusicId = data.musicId;
+            }
+        } catch (e) {
+            console.warn("无法从后端获取音乐 ID，使用默认配置");
+        }
+
         const apis = [
-            `https://api.i-meto.com/meting/api?server=netease&type=song&id=${musicConfig.id}`,
-            `https://api.injahow.cn/meting/?type=song&id=${musicConfig.id}`
+            `https://api.i-meto.com/meting/api?server=netease&type=song&id=${currentMusicId}`,
+            `https://api.injahow.cn/meting/?type=song&id=${currentMusicId}`
         ];
 
         for (const api of apis) {
@@ -24,7 +37,7 @@
                 if (data && data.length > 0) {
                     const info = data[0];
                     songTitle = info.title || info.name || "未知曲目";
-                    musicUrl = info.url || info.link || `https://music.163.com/song/media/outer/url?id=${musicConfig.id}.mp3`;
+                    musicUrl = info.url || info.link || `https://music.163.com/song/media/outer/url?id=${currentMusicId}.mp3`;
                     isLoading = false;
                     return; // 成功获取，退出循环
                 }
@@ -35,7 +48,7 @@
 
         // 所有 API 都失败后的最终降级方案
         songTitle = "点击播放";
-        musicUrl = `https://music.163.com/song/media/outer/url?id=${musicConfig.id}.mp3`;
+        musicUrl = `https://music.163.com/song/media/outer/url?id=${currentMusicId}.mp3`;
         isLoading = false;
     }
 
