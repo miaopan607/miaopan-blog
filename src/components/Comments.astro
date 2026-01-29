@@ -26,5 +26,33 @@ const { class: className } = Astro.props;
                 crossorigin="anonymous"
                 async>
         </script>
+        <script is:inline>
+            if (typeof window.updateGiscusTheme === 'undefined') {
+                window.updateGiscusTheme = function() {
+                    const theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+                    const iframe = document.querySelector('iframe.giscus-frame');
+                    if (!iframe) return;
+                    iframe.contentWindow.postMessage({
+                        giscus: {
+                            setConfig: {
+                                theme: theme
+                            }
+                        }
+                    }, 'https://giscus.app');
+                }
+
+                window.handleGiscusMessage = function(event) {
+                    if (event.origin !== 'https://giscus.app') return;
+                    if (!(typeof event.data === 'object' && event.data.giscus)) return;
+                    window.updateGiscusTheme();
+                }
+
+                document.addEventListener('theme-change', window.updateGiscusTheme);
+                window.addEventListener('message', window.handleGiscusMessage);
+            }
+            
+            // Still call it once in case the iframe is already there (e.g. navigation back to a page with comments)
+            window.updateGiscusTheme();
+        </script>
     </div>
-)}
+) }

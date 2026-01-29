@@ -57,6 +57,11 @@ export function applyThemeToDocument(theme: LIGHT_DARK_MODE) {
 		"data-theme",
 		expressiveCodeConfig.theme,
 	);
+
+	const event = new CustomEvent("theme-change", {
+		detail: { theme },
+	});
+	document.dispatchEvent(event);
 }
 
 export function setTheme(theme: LIGHT_DARK_MODE): void {
