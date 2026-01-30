@@ -22,7 +22,12 @@ if (!fs.existsSync(MUSIC_DATA_DIR)) {
 
 app.get('/api/today-music', (req, res) => {
     // 1. 获取今天的日期字符串 (YYYY-MM-DD)
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).replace(/\//g, '-');
     
     try {
         // 2. 读取目录下所有文件
