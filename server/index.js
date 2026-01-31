@@ -13,19 +13,59 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 1219;
-const MUSIC_API_BASE_URL = process.env.MUSIC_API_BASE_URL || 'http://localhost:1220';
 
 app.use(cors());
 app.use(express.json());
 
 const MUSIC_DATA_DIR = path.join(__dirname, 'music-data');
+const CACHE_FILE = path.join(__dirname, 'music-cache.json');
 
 if (!fs.existsSync(MUSIC_DATA_DIR)) {
     fs.mkdirSync(MUSIC_DATA_DIR, { recursive: true });
 }
 
-// Gemini 给我拉了坨大的，我也一下子没看懂，累了，先这样吧。
-// 已知问题：QQ 音乐填入需要会员的曲目 ID 时，无法正确隐藏播放按钮。
+// --- 缓存逻辑 ---
+let musicCache = {};
+
+function loadCache() {
+    if (fs.existsSync(CACHE_FILE)) {
+        try {
+            const data = fs.readFileSync(CACHE_FILE, 'utf-8');
+            musicCache = JSON.parse(data);
+            console.log(`[Cache] Loaded ${Object.keys(musicCache).length} cached songs.`);
+        } catch (e) {
+            console.error("[Cache] Failed to load music cache:", e);
+            musicCache = {};
+        }
+    }
+}
+
+function saveCache() {
+    try {
+        fs.writeFileSync(CACHE_FILE, JSON.stringify(musicCache, null, 2), 'utf-8');
+    } catch (e) {
+        console.error("[Cache] Failed to save music cache:", e);
+    }
+}
+
+// 初始加载缓存
+loadCache();
+
+function getFromCache(type, id) {
+    const key = `${type}:${id}`;
+    return musicCache[key] || null;
+}
+
+function setToCache(type, id, data) {
+    const key = `${type}:${id}`;
+    // 限制缓存数量，虽然用户说不会超过 5000，但做个保险
+    if (Object.keys(musicCache).length >= 10000) {
+        const firstKey = Object.keys(musicCache)[0];
+        delete musicCache[firstKey];
+    }
+    musicCache[key] = data;
+    saveCache();
+}
 
 app.get('/api/today-music', async (req, res) => {
     // 1. 获取今天的日期字符串 (YYYY-MM-DD)
@@ -81,6 +121,16 @@ app.get('/api/today-music', async (req, res) => {
 
             console.log(`Music routing: Type=${musicType}, ID=${musicId}`);
 
+            // 检查缓存
+            if (musicId) {
+                const cachedMusic = getFromCache(musicType, musicId);
+                if (cachedMusic) {
+                    console.log(`[Cache] Hit for ${musicType}:${musicId}`);
+                    Object.assign(finalResponse, cachedMusic);
+                    return res.json(finalResponse);
+                }
+            }
+
             if (musicType === 'qq' && musicId) {
                 // --- QQ 音乐处理逻辑 ---
                  try {
@@ -96,13 +146,19 @@ app.get('/api/today-music', async (req, res) => {
                     if (qqMusicData) {
                         const playUrl = await getQQMusicPlayUrl(qqMusicData.mid, qqMusicData.mediaId);
                         
-                        finalResponse.musicId = qqMusicData.mid;
-                        finalResponse.name = qqMusicData.name;
-                        finalResponse.artists = qqMusicData.artists;
-                        finalResponse.musicUrl = playUrl || "";
-                        finalResponse.cover = qqMusicData.cover;
-                        finalResponse.type = 'qq';
+                        const musicInfo = {
+                            musicId: qqMusicData.mid,
+                            name: qqMusicData.name,
+                            artists: qqMusicData.artists,
+                            musicUrl: playUrl || "",
+                            cover: qqMusicData.cover,
+                            type: 'qq'
+                        };
+
+                        // 写入缓存
+                        setToCache(musicType, musicId, musicInfo);
                         
+                        Object.assign(finalResponse, musicInfo);
                         return res.json(finalResponse);
                     }
                  } catch (e) {
@@ -112,27 +168,24 @@ app.get('/api/today-music', async (req, res) => {
             } else if (musicType === 'netease' && musicId) {
                 // --- 网易云音乐处理逻辑 ---
                 try {
-                    const detailRes = await fetch(`${MUSIC_API_BASE_URL}/song/detail?ids=${musicId}`);
-                    const detailData = await detailRes.json();
+                    const neteaseData = await getNeteaseMusicMetadata(musicId);
                     
-                    const urlRes = await fetch(`${MUSIC_API_BASE_URL}/song/url?id=${musicId}&realIP=116.25.146.177`);
-                    const urlData = await urlRes.json();
-    
-                    if (detailData.songs && detailData.songs.length > 0 && urlData.data && urlData.data.length > 0) {
-                        const song = detailData.songs[0];
-                        const musicInfo = urlData.data[0];
-        
-                        let finalMusicUrl = musicInfo.url;
-                        if (musicInfo.freeTrialInfo || !musicInfo.url) {
-                            finalMusicUrl = "";
-                        }
-                        
-                        finalResponse.musicId = musicId;
-                        finalResponse.name = song.name;
-                        finalResponse.artists = song.ar.map(a => a.name);
-                        finalResponse.musicUrl = finalMusicUrl;
-                        finalResponse.type = 'netease';
-                        
+                    if (neteaseData) {
+                        const musicInfo = {
+                            musicId: neteaseData.id,
+                            name: neteaseData.name,
+                            artists: neteaseData.artists,
+                            // 使用直链解析，不再依赖复杂的 API
+                            // 格式: https://music.163.com/song/media/outer/url?id=ID.mp3
+                            musicUrl: `https://music.163.com/song/media/outer/url?id=${neteaseData.id}.mp3`,
+                            cover: neteaseData.cover,
+                            type: 'netease'
+                        };
+
+                        // 写入缓存
+                        setToCache(musicType, musicId, musicInfo);
+
+                        Object.assign(finalResponse, musicInfo);
                         return res.json(finalResponse);
                     }
                 } catch (e) {
@@ -332,6 +385,50 @@ async function getQQMusicPlayUrl(mid, mediaId) {
 
     } catch (e) {
         console.error("Error fetching VKey:", e);
+    }
+    return null;
+}
+
+// Helper Functions for Netease Music
+
+/**
+ * 辅助函数：解析网易云音乐元数据
+ * 支持输入 ID 或 链接 (如外链播放器链接)
+ */
+async function getNeteaseMusicMetadata(idOrLink) {
+    try {
+        let musicId = idOrLink.toString();
+        // 如果是链接，提取 ID
+        if (musicId.startsWith('http')) {
+            const match = musicId.match(/id=(\d+)/);
+            if (match) {
+                musicId = match[1];
+            }
+        }
+
+        console.log(`Fetching Netease Music Metadata for ID: ${musicId}`);
+        
+        // 使用网易云公开详情 API (无需自建 API 服务)
+        const apiUrl = `https://music.163.com/api/song/detail/?id=${musicId}&ids=[${musicId}]`;
+        const response = await fetch(apiUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://music.163.com/'
+            }
+        });
+        const data = await response.json();
+
+        if (data.songs && data.songs.length > 0) {
+            const song = data.songs[0];
+            return {
+                id: musicId,
+                name: song.name,
+                artists: song.artists ? song.artists.map(a => a.name) : [],
+                cover: song.album ? song.album.picUrl : ''
+            };
+        }
+    } catch (e) {
+        console.error("Error in getNeteaseMusicMetadata:", e);
     }
     return null;
 }
