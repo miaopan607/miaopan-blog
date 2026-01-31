@@ -8,13 +8,51 @@
     let isLoading = $state(true);
     let error = $state('');
 
+    // 配置 marked：支持链接新标签页和 ::: 指令
+    marked.use({
+        renderer: {
+            link({ href, title, text }) {
+                const isExternal = href.startsWith('http') || href.startsWith('//');
+                const target = isExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+                return `<a href="${href}"${target}${title ? ` title="${title}"` : ''}>${text}</a>`;
+            }
+        },
+        extensions: [
+            {
+                name: 'admonition',
+                level: 'block',
+                start(src) { return src.match(/^:::/m)?.index; },
+                tokenizer(src, tokens) {
+                    const rule = /^:::\s*(\w+)(?:\{([^}]*)\})?\s*\n([\s\S]*?)\n:::/;
+                    const match = rule.exec(src);
+                    if (match) {
+                        return {
+                            type: 'admonition',
+                            raw: match[0],
+                            admonitionType: match[1],
+                            text: match[3],
+                            tokens: this.lexer.blockTokens(match[3])
+                        };
+                    }
+                },
+                renderer(token) {
+                    const type = token.admonitionType.toLowerCase();
+                    const body = token.tokens ? this.parser.parse(token.tokens) : '';
+                    return `<blockquote class="admonition bdm-${type}">
+                        <span class="bdm-title">${type.toUpperCase()}</span>
+                        ${body}
+                    </blockquote>`;
+                }
+            }
+        ]
+    });
+
     async function fetchMusicContent() {
         try {
             const response = await fetch(apiUrl);
             const data = await response.json();
             
             if (data.success) {
-                // 使用 marked 将 markdown 转为 HTML
                 content = await marked.parse(data.content);
             } else {
                 content = await marked.parse(data.content || '今日暂无推荐');
@@ -47,7 +85,7 @@
 </div>
 
 <style>
-    /* 保持与 Markdown.astro 类似的样式 */
+    /* 恢复原始样式 */
     .dynamic-content :global(h1) {
         font-size: 1.875rem;
         font-weight: 700;
@@ -84,5 +122,10 @@
     }
     .dynamic-content :global(a:hover) {
         opacity: 0.8;
+    }
+
+    /* 仅为提示框增加底部边距，防止与下方元素粘连 */
+    .dynamic-content :global(.admonition) {
+        margin-bottom: 1rem;
     }
 </style>
