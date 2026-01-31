@@ -4,12 +4,16 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import matter from 'gray-matter';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 1219;
+const PORT = process.env.PORT || 1219;
+const MUSIC_API_BASE_URL = process.env.MUSIC_API_BASE_URL || 'http://localhost:1220';
 
 app.use(cors());
 app.use(express.json());
@@ -20,7 +24,10 @@ if (!fs.existsSync(MUSIC_DATA_DIR)) {
     fs.mkdirSync(MUSIC_DATA_DIR, { recursive: true });
 }
 
-app.get('/api/today-music', (req, res) => {
+// Gemini 给我拉了坨大的，我也一下子没看懂，累了，先这样吧。
+// 已知问题：QQ 音乐填入需要会员的曲目 ID 时，无法正确隐藏播放按钮。
+
+app.get('/api/today-music', async (req, res) => {
     // 1. 获取今天的日期字符串 (YYYY-MM-DD)
     const today = new Date().toLocaleDateString('zh-CN', {
         timeZone: 'Asia/Shanghai',
@@ -28,19 +35,17 @@ app.get('/api/today-music', (req, res) => {
         month: '2-digit',
         day: '2-digit'
     }).replace(/\//g, '-');
-    
+
     try {
         // 2. 读取目录下所有文件
         const files = fs.readdirSync(MUSIC_DATA_DIR);
-        
-        // 3. 过滤出 .md 文件，并按日期倒序排列（最新的在前面）
+
+        // 3. 过滤出 .md 文件，并按日期倒序排列
         const sortedFiles = files
             .filter(file => file.endsWith('.md'))
             .sort((a, b) => b.localeCompare(a));
 
         // 4. 找到不晚于今天的最新文件
-        // 比如今天 2023-10-27，如果列表有 [2023-10-28, 2023-10-25, 2023-10-20]
-        // 它会跳过 28 号，选择 25 号。
         const targetFile = sortedFiles.find(file => file.replace('.md', '') <= today);
 
         if (targetFile) {
@@ -49,26 +54,104 @@ app.get('/api/today-music', (req, res) => {
             const { data, content } = matter(fileContent);
             const actualDate = targetFile.replace('.md', '');
 
-            res.json({
+            // 构建默认的基础响应对象
+            let finalResponse = {
                 success: true,
-                date: actualDate, // 返回实际找到的日期
-                isToday: actualDate === today, // 告诉前端这是不是今天的
-                musicId: data.id || "101126",
-                title: data.title || "今日推荐",
-                content: content
-            });
+                date: actualDate,
+                isToday: actualDate === today,
+                musicId: "",
+                name: "",
+                artists: [],
+                musicUrl: "",
+                cover: "",
+                content: content,
+                type: 'none' 
+            };
+
+            // 统一字段获取：
+            // id: 统一的数据总线 (可能是数字ID、字符串MID、或者URL)
+            // type: 控制信号 ('qq', '163'/'netease')
+            // 默认 type 为 'netease' (即 163)
+            
+            let musicId = data.id;
+            let musicType = data.type ? data.type.toLowerCase() : 'netease';
+            
+            // 统一别名
+            if (musicType === '163') musicType = 'netease';
+
+            console.log(`Music routing: Type=${musicType}, ID=${musicId}`);
+
+            if (musicType === 'qq' && musicId) {
+                // --- QQ 音乐处理逻辑 ---
+                 try {
+                    let qqMusicData = null;
+                    
+                    // 判断 ID 是链接还是普通 ID
+                    if (musicId.toString().startsWith('http')) {
+                        qqMusicData = await getQQMusicMetadataFromLink(musicId);
+                    } else {
+                        qqMusicData = await getQQMusicMetadataFromId(musicId);
+                    }
+
+                    if (qqMusicData) {
+                        const playUrl = await getQQMusicPlayUrl(qqMusicData.mid, qqMusicData.mediaId);
+                        
+                        finalResponse.musicId = qqMusicData.mid;
+                        finalResponse.name = qqMusicData.name;
+                        finalResponse.artists = qqMusicData.artists;
+                        finalResponse.musicUrl = playUrl || "";
+                        finalResponse.cover = qqMusicData.cover;
+                        finalResponse.type = 'qq';
+                        
+                        return res.json(finalResponse);
+                    }
+                 } catch (e) {
+                     console.error("QQ Music Parse Error:", e);
+                 }
+
+            } else if (musicType === 'netease' && musicId) {
+                // --- 网易云音乐处理逻辑 ---
+                try {
+                    const detailRes = await fetch(`${MUSIC_API_BASE_URL}/song/detail?ids=${musicId}`);
+                    const detailData = await detailRes.json();
+                    
+                    const urlRes = await fetch(`${MUSIC_API_BASE_URL}/song/url?id=${musicId}&realIP=116.25.146.177`);
+                    const urlData = await urlRes.json();
+    
+                    if (detailData.songs && detailData.songs.length > 0 && urlData.data && urlData.data.length > 0) {
+                        const song = detailData.songs[0];
+                        const musicInfo = urlData.data[0];
+        
+                        let finalMusicUrl = musicInfo.url;
+                        if (musicInfo.freeTrialInfo || !musicInfo.url) {
+                            finalMusicUrl = "";
+                        }
+                        
+                        finalResponse.musicId = musicId;
+                        finalResponse.name = song.name;
+                        finalResponse.artists = song.ar.map(a => a.name);
+                        finalResponse.musicUrl = finalMusicUrl;
+                        finalResponse.type = 'netease';
+                        
+                        return res.json(finalResponse);
+                    }
+                } catch (e) {
+                    console.error("Netease Music Parse Error:", e);
+                }
+            }
+
+            // 兜底返回
+            console.log("Music parsing failed or incomplete config, returning content only.");
+            res.json(finalResponse);
         } else {
-            // 5. 如果连以前的文件都没有，返回 404
             res.status(404).json({
                 success: false,
-                message: "No history music found",
-                date: today,
-                musicId: "101126",
                 title: "暂无推荐",
-                content: "库里还没有任何音乐推荐哦~"
+                content: "暂无推荐"
             });
         }
     } catch (error) {
+        console.error("Music API Error:", error);
         res.status(500).json({ success: false, message: "Server Error" });
     }
 });
@@ -76,3 +159,179 @@ app.get('/api/today-music', (req, res) => {
 app.listen(PORT, () => {
     console.log(`Music Backend is running at http://localhost:${PORT}`);
 });
+
+// Helper Functions for QQ Music
+
+// 辅助函数：解析 QQ 音乐链接获取元数据
+async function getQQMusicMetadataFromLink(qqLink) {
+    try {
+        console.log(`Fetching QQ Music Page: ${qqLink}`);
+        // 1. 获取外链页面内容
+        // 我们需要模拟 User-Agent 防止被拦截
+        const response = await fetch(qqLink, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+        const html = await response.text();
+
+        // 2. 解析页面中的 __ssrFirstPageData__ 变量
+        // 这一块包含了歌曲的详细元数据（歌名、歌手、MID等）
+        const match = html.match(/window\.__ssrFirstPageData__\s*=\s*(\{.+?\})(?:;|<\/script>)/s);
+        if (!match) {
+            console.error("Could not find __ssrFirstPageData__ in QQ Music response");
+            return null;
+        }
+
+        const data = JSON.parse(match[1]);
+        // 兼容单曲和歌单（songList）结构
+        const songToPlay = data.song || (data.songList && data.songList[0]);
+
+        if (!songToPlay) return null;
+
+        // 获取歌曲的关键 ID：
+        // mid: 歌曲本身的唯一标识
+        // mediaId: 音频文件的标识 (通常在 file.media_mid 中)
+        const mid = songToPlay.mid;
+        const mediaId = songToPlay.file ? songToPlay.file.media_mid : mid;
+
+        return {
+            mid: mid,
+            mediaId: mediaId,
+            name: songToPlay.name || songToPlay.title,
+            artists: songToPlay.singer ? songToPlay.singer.map(s => s.name) : [],
+            cover: songToPlay.album ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${songToPlay.album.mid}.jpg` : ''
+        };
+
+    } catch (e) {
+        console.error("Error in getQQMusicMetadataFromLink:", e);
+        return null;
+    }
+}
+
+// 辅助函数：通过 ID/MID 获取歌曲详细信息
+async function getQQMusicMetadataFromId(id) {
+    try {
+        // 1. 判断 ID 类型
+        // 如果全是数字，通常是 songid；如果包含字符，则是 songmid
+        const isSongMid = isNaN(Number(id)); 
+        console.log(`Fetching QQ Music Metadata for ID: ${id} (isMid: ${isSongMid})`);
+        
+        // 2. 构造 u.y.qq.com API 请求体
+        const payload = {
+            comm: { ct: 24, cv: 0 },
+            songinfo: {
+                method: "get_song_detail_yqq",
+                module: "music.pf_song_detail_svr",
+                param: {
+                    song_mid: isSongMid ? id : "",   // 传入 songmid
+                    song_id: isSongMid ? 0 : parseInt(id) // 或 songid
+                }
+            }
+        };
+
+        const apiUrl = `https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data=${encodeURIComponent(JSON.stringify(payload))}`;
+        
+        // 3. 请求 API 获取详情
+        const response = await fetch(apiUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                // 需要 Referer 才能通过校验
+                'Referer': 'https://y.qq.com/'
+            }
+        });
+        const json = await response.json();
+        
+        // 4. 解析返回结果
+        const trackInfo = json?.songinfo?.data?.track_info;
+        
+        if (!trackInfo) {
+             console.error("QQ Music Metadata not found for ID:", id);
+             return null;
+        }
+
+        // 提取并返回标准格式元数据
+        return {
+            mid: trackInfo.mid,
+            mediaId: trackInfo.file ? trackInfo.file.media_mid : trackInfo.mid,
+            name: trackInfo.name,
+            artists: trackInfo.singer ? trackInfo.singer.map(s => s.name) : [],
+            cover: trackInfo.album ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${trackInfo.album.mid}.jpg` : ''
+        };
+
+    } catch (e) {
+        console.error("Error in getQQMusicMetadataFromId:", e);
+        return null;
+    }
+}
+
+// 辅助函数：获取播放链接（核心逻辑）
+async function getQQMusicPlayUrl(mid, mediaId) {
+    // 1. 生成随机 GUID
+    // QQ 音乐的 vkey 是和 guid 绑定的，每次随机生成可以确保获取到最新的有效 key
+    const guid = Math.floor(Math.random() * 10000000000).toString();
+    
+    // 2. 构造文件名
+    // 统一请求标准音质 (C400)，格式为: C400 + mediaId + .m4a
+    // 这种格式兼容性最好，无论是否 VIP 歌曲，API 通常都会返回结果
+    const filename = mediaId ? `C400${mediaId}.m4a` : `C400${mid}.m4a`;
+    
+    // 3. 构造请求体获取 vkey
+    // req: 通用 CDN 调度请求，用于 fallback 取 vkey
+    // req_0: 特定歌曲的 vkey 请求，包含 filename
+    const payload = {
+        req: {
+            module: 'CDN.SrfCdnDispatchServer',
+            method: 'GetCdnDispatch',
+            param: { guid, calltype: 0, userip: '' }
+        },
+        req_0: {
+            module: 'vkey.GetVkeyServer',
+            method: 'CgiGetVkey',
+            param: {
+                guid,
+                songmid: [mid],
+                songtype: [0],
+                uin: '0',
+                loginflag: 1, // 模拟登录态
+                platform: '20',
+                filename: [filename]
+            }
+        },
+        comm: { uin: 0, format: 'json', ct: 24, cv: 0 }
+    };
+
+    try {
+        const apiUrl = `https://u.y.qq.com/cgi-bin/musicu.fcg?format=json&data=${encodeURIComponent(JSON.stringify(payload))}`;
+        const res = await fetch(apiUrl, {
+            headers: {
+                'Referer': 'https://y.qq.com/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+        });
+        const json = await res.json();
+        
+        const midurlinfos = json?.req_0?.data?.midurlinfo;
+        // 强制使用该域名 (用户验证通过)
+        const sip = 'https://aqqmusic.tc.qq.com/amobile.music.tc.qq.com/'; 
+
+        // 4. 尝试解析标准返回
+        // 如果 req_0 直接返回了 purl (playback url)，则直接拼接返回
+        if (midurlinfos && midurlinfos[0] && midurlinfos[0].purl) {
+            return sip + midurlinfos[0].purl;
+        }
+
+        // 5. 降级方案 (Fallback)
+        // 如果没有特定 purl，但 req 返回了通用 vkey
+        // 我们强制手动拼接链接：域名 + 文件名 + vkey + guid
+        if (json?.req?.data?.vkey) {
+            const vkey = json.req.data.vkey;
+            console.log(`Using fallback vkey for Standard: ${filename}`);
+            return `${sip}${filename}?vkey=${vkey}&guid=${guid}&uin=0&fromtag=66`;
+        }
+
+    } catch (e) {
+        console.error("Error fetching VKey:", e);
+    }
+    return null;
+}

@@ -99,7 +99,3 @@ export const commentConfig: CommentConfig = {
   theme: 'preferred_color_scheme',             // 对应 data-theme
   lang: 'zh-CN',                               // 对应 data-lang
 }
-
-export const musicConfig: MusicConfig = {
-   id: "101126",
- }

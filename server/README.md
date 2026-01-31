@@ -18,9 +18,16 @@ npm install pm2 -g
    ```bash
    cd server
    npm init -y
-   npm install express cors gray-matter
+   npm install express cors gray-matter dotenv
    ```
-3. 启动后端服务：
+
+4. 在 `server` 目录下创建 `.env` 文件并配置：
+   ```env
+   MUSIC_API_BASE_URL=http://localhost:1220
+   PORT=1219
+   ```
+
+5. 启动后端服务：
    ```bash
    pm2 start index.js --name "music-backend"
    ```
