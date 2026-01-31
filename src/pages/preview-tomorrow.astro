@@ -1,0 +1,24 @@
+---
+
+import { getEntry, render } from "astro:content";
+import Markdown from "@components/misc/Markdown.astro";
+import DynamicMusicContent from "@components/DynamicMusicContent.svelte";
+import I18nKey from "../i18n/i18nKey";
+import { i18n } from "../i18n/translation";
+import MainGridLayout from "../layouts/MainGridLayout.astro";
+import Comments from "../components/Comments.astro";
+import { commentConfig } from "../config";
+
+---
+<MainGridLayout title="明日预览" description="预览明天的音乐内容">
+    <div class="flex w-full rounded-[var(--radius-large)] overflow-hidden relative min-h-32">
+        <div class="card-base z-10 px-9 py-6 relative w-full ">
+            <Markdown class="mt-2 text-primary font-bold mb-4">
+                # 明日音乐预览
+            </Markdown>
+            <Markdown class="mt-2">
+                <DynamicMusicContent client:only="svelte" apiUrl={`${import.meta.env.PUBLIC_BASE_URL || 'https://api.xn--24wq0n.top'}/api/tomorrow-music`} />
+            </Markdown>
+        </div>
+    </div>
+</MainGridLayout>

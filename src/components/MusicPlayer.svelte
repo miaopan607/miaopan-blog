@@ -11,9 +11,12 @@
     
     async function fetchMusicInfo() {
         try {
-            // 从后端获取今日音乐信息
             const apiBase = import.meta.env.PUBLIC_BASE_URL || 'https://api.xn--24wq0n.top';
-            const res = await fetch(`${apiBase}/api/today-music`);
+            // 检查当前页面是否为预览页面，如果是则请求明天的接口
+            const isPreviewPage = window.location.pathname.includes('preview-tomorrow');
+            const endpoint = isPreviewPage ? '/api/tomorrow-music' : '/api/today-music';
+            
+            const res = await fetch(`${apiBase}${endpoint}`);
             const data = await res.json();
             if (data.success && data.musicUrl) {
                 musicUrl = data.musicUrl;

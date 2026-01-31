@@ -2,13 +2,15 @@
     import { onMount } from 'svelte';
     import { marked } from 'marked';
 
-    let content = $state('正在加载今日音乐内容...');
+    const apiBase = import.meta.env.PUBLIC_BASE_URL || 'https://api.xn--24wq0n.top';
+    let { apiUrl = `${apiBase}/api/today-music` } = $props();
+    let content = $state('正在加载音乐内容...');
     let isLoading = $state(true);
     let error = $state('');
 
     async function fetchMusicContent() {
         try {
-            const response = await fetch('https://api.xn--24wq0n.top/api/today-music');
+            const response = await fetch(apiUrl);
             const data = await response.json();
             
             if (data.success) {

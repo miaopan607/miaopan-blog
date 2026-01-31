@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 1219;
+const PORT = process.env.PORT;
 
 app.use(cors());
 app.use(express.json());
@@ -67,6 +67,108 @@ function setToCache(type, id, data) {
     saveCache();
 }
 
+// 辅助函数：统一处理音乐文件的解析和元数据获取
+async function getMusicResponse(targetFile, dateStr, isToday) {
+    const filePath = path.join(MUSIC_DATA_DIR, targetFile);
+    if (!fs.existsSync(filePath)) return null;
+
+    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    const { data, content } = matter(fileContent);
+    const actualDate = targetFile.replace('.md', '');
+
+    let finalResponse = {
+        success: true,
+        date: actualDate,
+        isToday: isToday,
+        musicId: "",
+        name: "",
+        artists: [],
+        musicUrl: "",
+        cover: "",
+        content: content,
+        type: 'none'
+    };
+
+    let musicId = data.id;
+    let musicType = data.type ? data.type.toLowerCase() : 'netease';
+    
+    // 统一别名
+    if (musicType === '163') musicType = 'netease';
+
+    console.log(`Music routing: Type=${musicType}, ID=${musicId}`);
+
+    // 检查缓存
+    if (musicId) {
+        const cachedMusic = getFromCache(musicType, musicId);
+        if (cachedMusic) {
+            console.log(`[Cache] Hit for ${musicType}:${musicId}`);
+            Object.assign(finalResponse, cachedMusic);
+            return finalResponse;
+        }
+    }
+
+    if (musicType === 'qq' && musicId) {
+        // --- QQ 音乐处理逻辑 ---
+        try {
+            let qqMusicData = null;
+            
+            // 判断 ID 是链接还是普通 ID
+            if (musicId.toString().startsWith('http')) {
+                qqMusicData = await getQQMusicMetadataFromLink(musicId);
+            } else {
+                qqMusicData = await getQQMusicMetadataFromId(musicId);
+            }
+
+            if (qqMusicData) {
+                const playUrl = await getQQMusicPlayUrl(qqMusicData.mid, qqMusicData.mediaId);
+                const musicInfo = {
+                    musicId: qqMusicData.mid,
+                    name: qqMusicData.name,
+                    artists: qqMusicData.artists,
+                    musicUrl: playUrl || "",
+                    cover: qqMusicData.cover,
+                    type: 'qq'
+                };
+
+                // 写入缓存
+                setToCache(musicType, musicId, musicInfo);
+                Object.assign(finalResponse, musicInfo);
+                return finalResponse;
+            }
+        } catch (e) {
+            console.error("QQ Music Parse Error:", e);
+        }
+    } else if (musicType === 'netease' && musicId) {
+        // --- 网易云音乐处理逻辑 ---
+        try {
+            const neteaseData = await getNeteaseMusicMetadata(musicId);
+            if (neteaseData) {
+                const musicInfo = {
+                    musicId: neteaseData.id,
+                    name: neteaseData.name,
+                    artists: neteaseData.artists,
+                    // 使用直链解析，不再依赖复杂的 API
+                    // 格式: https://music.163.com/song/media/outer/url?id=ID.mp3
+                    musicUrl: `https://music.163.com/song/media/outer/url?id=${neteaseData.id}.mp3`,
+                    cover: neteaseData.cover,
+                    type: 'netease'
+                };
+
+                // 写入缓存
+                setToCache(musicType, musicId, musicInfo);
+                Object.assign(finalResponse, musicInfo);
+                return finalResponse;
+            }
+        } catch (e) {
+            console.error("Netease Music Parse Error:", e);
+        }
+    }
+
+    // 兜底返回
+    console.log("Music parsing failed or incomplete config, returning content only.");
+    return finalResponse;
+}
+
 app.get('/api/today-music', async (req, res) => {
     // 1. 获取今天的日期字符串 (YYYY-MM-DD)
     const today = new Date().toLocaleDateString('zh-CN', {
@@ -89,113 +191,9 @@ app.get('/api/today-music', async (req, res) => {
         const targetFile = sortedFiles.find(file => file.replace('.md', '') <= today);
 
         if (targetFile) {
-            const filePath = path.join(MUSIC_DATA_DIR, targetFile);
-            const fileContent = fs.readFileSync(filePath, 'utf-8');
-            const { data, content } = matter(fileContent);
             const actualDate = targetFile.replace('.md', '');
-
-            // 构建默认的基础响应对象
-            let finalResponse = {
-                success: true,
-                date: actualDate,
-                isToday: actualDate === today,
-                musicId: "",
-                name: "",
-                artists: [],
-                musicUrl: "",
-                cover: "",
-                content: content,
-                type: 'none' 
-            };
-
-            // 统一字段获取：
-            // id: 统一的数据总线 (可能是数字ID、字符串MID、或者URL)
-            // type: 控制信号 ('qq', '163'/'netease')
-            // 默认 type 为 'netease' (即 163)
-            
-            let musicId = data.id;
-            let musicType = data.type ? data.type.toLowerCase() : 'netease';
-            
-            // 统一别名
-            if (musicType === '163') musicType = 'netease';
-
-            console.log(`Music routing: Type=${musicType}, ID=${musicId}`);
-
-            // 检查缓存
-            if (musicId) {
-                const cachedMusic = getFromCache(musicType, musicId);
-                if (cachedMusic) {
-                    console.log(`[Cache] Hit for ${musicType}:${musicId}`);
-                    Object.assign(finalResponse, cachedMusic);
-                    return res.json(finalResponse);
-                }
-            }
-
-            if (musicType === 'qq' && musicId) {
-                // --- QQ 音乐处理逻辑 ---
-                 try {
-                    let qqMusicData = null;
-                    
-                    // 判断 ID 是链接还是普通 ID
-                    if (musicId.toString().startsWith('http')) {
-                        qqMusicData = await getQQMusicMetadataFromLink(musicId);
-                    } else {
-                        qqMusicData = await getQQMusicMetadataFromId(musicId);
-                    }
-
-                    if (qqMusicData) {
-                        const playUrl = await getQQMusicPlayUrl(qqMusicData.mid, qqMusicData.mediaId);
-                        
-                        const musicInfo = {
-                            musicId: qqMusicData.mid,
-                            name: qqMusicData.name,
-                            artists: qqMusicData.artists,
-                            musicUrl: playUrl || "",
-                            cover: qqMusicData.cover,
-                            type: 'qq'
-                        };
-
-                        // 写入缓存
-                        setToCache(musicType, musicId, musicInfo);
-                        
-                        Object.assign(finalResponse, musicInfo);
-                        return res.json(finalResponse);
-                    }
-                 } catch (e) {
-                     console.error("QQ Music Parse Error:", e);
-                 }
-
-            } else if (musicType === 'netease' && musicId) {
-                // --- 网易云音乐处理逻辑 ---
-                try {
-                    const neteaseData = await getNeteaseMusicMetadata(musicId);
-                    
-                    if (neteaseData) {
-                        const musicInfo = {
-                            musicId: neteaseData.id,
-                            name: neteaseData.name,
-                            artists: neteaseData.artists,
-                            // 使用直链解析，不再依赖复杂的 API
-                            // 格式: https://music.163.com/song/media/outer/url?id=ID.mp3
-                            musicUrl: `https://music.163.com/song/media/outer/url?id=${neteaseData.id}.mp3`,
-                            cover: neteaseData.cover,
-                            type: 'netease'
-                        };
-
-                        // 写入缓存
-                        setToCache(musicType, musicId, musicInfo);
-
-                        Object.assign(finalResponse, musicInfo);
-                        return res.json(finalResponse);
-                    }
-                } catch (e) {
-                    console.error("Netease Music Parse Error:", e);
-                }
-            }
-
-            // 兜底返回
-            console.log("Music parsing failed or incomplete config, returning content only.");
-            res.json(finalResponse);
+            const response = await getMusicResponse(targetFile, today, actualDate === today);
+            res.json(response);
         } else {
             res.status(404).json({
                 success: false,
@@ -208,6 +206,37 @@ app.get('/api/today-music', async (req, res) => {
         res.status(500).json({ success: false, message: "Server Error" });
     }
 });
+
+app.get('/api/tomorrow-music', async (req, res) => {
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = tomorrowDate.toLocaleDateString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).replace(/\//g, '-');
+
+    try {
+        const targetFile = tomorrow + '.md';
+        const filePath = path.join(MUSIC_DATA_DIR, targetFile);
+
+        if (fs.existsSync(filePath)) {
+            const response = await getMusicResponse(targetFile, tomorrow, false);
+            res.json(response);
+        } else {
+            res.json({
+                success: false,
+                title: "未找到明天的推荐",
+                content: "还没准备好明天的内容哦，到时候再来看看吧！"
+            });
+        }
+    } catch (error) {
+        console.error("Tomorrow Music API Error:", error);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+});
+
 
 app.listen(PORT, () => {
     console.log(`Music Backend is running at http://localhost:${PORT}`);
