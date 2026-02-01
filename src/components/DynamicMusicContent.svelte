@@ -115,14 +115,6 @@
         font-weight: bold;
         color: #9da3ff;
     }
-    .dynamic-content :global(a) {
-        color: var(--primary);
-        text-decoration: underline;
-        transition: opacity 0.2s;
-    }
-    .dynamic-content :global(a:hover) {
-        opacity: 0.8;
-    }
 
     /* 仅为提示框增加底部边距，防止与下方元素粘连 */
     .dynamic-content :global(.admonition) {
