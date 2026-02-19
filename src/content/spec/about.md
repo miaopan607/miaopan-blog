@@ -4,7 +4,7 @@
 
 ### 主要成分
 
-[卿卿](https://space.bilibili.com/16330793)，[村宝](https://space.bilibili.com/9607728)。
+[卿卿](https://space.bilibili.com/16330793)，[村宝](https://space.bilibili.com/9607728)，[芦荟](https://space.bilibili.com/2967374)。
 
 ### 网站主题色
 
