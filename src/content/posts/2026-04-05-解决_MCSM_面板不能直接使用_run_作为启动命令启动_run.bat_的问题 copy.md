@@ -9,7 +9,7 @@ draft: false
 
 在 Windows Server 中使用 MCSM 面板时，某次版本更新后遇到不能直接使用 run 启动 run.bat 作为启动命令的问题。
 
-![](.\images\11d51ad88ed23fc4de04feb547c0ff8c.png)
+![](./images/11d51ad88ed23fc4de04feb547c0ff8c.png)
 
 ↑错误截图示例
 
