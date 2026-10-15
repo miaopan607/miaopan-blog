@@ -64,7 +64,7 @@
 - 根项目使用 **Node.js 和 pnpm 9.14.4**，保留 `pnpm-lock.yaml`。`preinstall` 强制 pnpm；不要改用 npm/yarn/Bun 安装根项目依赖。
 - 根 `package.json` 没有 `engines` 或精确 Node 版本约束；中文模板文档列出的 Node.js `<= 22` 不属于配置强制限制，选择运行时需以实际工具兼容性为准。
 - `server/` 是独立 ESM 包，依赖包含 dotenv，不要假设根依赖安装已满足后端要求。
-- `pnpm deploy` 指向 PowerShell 的 `scripts/deploy.ps1`，当前仓库缺少该文件，不作为可用部署步骤。
+- `pnpm run deploy` 运行 `scripts/deploy.js`，构建站点和 Pagefind 后通过 SSH/rsync 同步 `dist/`；本地配置见 `deploy.config.example.json`。本地和远端均需 rsync 3.0+，`--dry-run` 仅预览远端变更；正式部署会删除目标目录中的非构建文件，目标必须为博客专用目录，不包含 `server/` 后端部署。
 - `.astro/` 和 `dist/` 是生成产物，修改源配置和内容，不手工维护生成文件。
 
 ## Testing & QA

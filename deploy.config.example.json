@@ -1,0 +1,4 @@
+{
+	"host": "blog-server",
+	"path": "/var/www/miaopan-blog"
+}

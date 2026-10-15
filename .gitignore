@@ -31,5 +31,5 @@ yarn.lock
 .idea
 
 # deployment
-scripts/deploy.*
+deploy.config.json
 .env.local
